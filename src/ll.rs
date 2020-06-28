@@ -17,6 +17,8 @@ struct Node<T> {
 
 impl<T> Node<T> {
   const fn is_full(&self) -> bool { self.num_items == NODE_SIZE as u8 }
+  const fn len(&self) -> u8 { self.num_items }
+  const fn is_empty(&self) -> bool { self.len() == 0 }
 
   fn empty(next: Option<NonNull<Self>>) -> Self {
     let items: [MaybeUninit<T>; NODE_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
@@ -28,7 +30,7 @@ impl<T> Node<T> {
   }
   fn alloc_next(&mut self) -> &mut Self {
     let new = Box::new(Self::empty(self.next.take()));
-    self.next = Some(Box::leak(new).into());
+    assert!(self.next.replace(Box::leak(new).into()).is_none());
     unsafe { &mut *self.next.unwrap().as_ptr() }
   }
   fn next_mut(&mut self) -> Option<&mut Self> { self.next.map(|n| unsafe { &mut *n.as_ptr() }) }
@@ -128,6 +130,7 @@ impl<T> Node<T> {
         .remove(next_idx)
     }
   }
+
   fn remove_at(&mut self, i: u8) -> T {
     assert!(self.num_items > i);
     let out = replace(&mut self.items[i as usize], MaybeUninit::uninit());
@@ -149,17 +152,18 @@ impl<T> Node<T> {
       self.insert_end(t);
     }
   }
+
   fn pop_back(&mut self) -> T {
     if let Some(next) = self.next_mut() {
       let out = next.pop_back();
-      if next.num_items == 0 {
+      if next.is_empty() {
         assert!(next.next.is_none());
         unsafe { drop_in_place(next) }
         self.next = None;
       }
       out
     } else {
-      assert_ne!(self.num_items, 0);
+      debug_assert_ne!(self.num_items, 0);
       self.num_items -= 1;
       let out = replace(
         &mut self.items[self.num_items as usize],
@@ -207,21 +211,14 @@ impl<T> LinkedList<T> {
   pub const fn new() -> Self { Self { head: None, len: 0 } }
   pub const fn len(&self) -> usize { self.len }
   pub const fn is_empty(&self) -> bool { self.len == 0 }
+
   fn alloc_head(&mut self) -> &mut Node<T> {
     let new = Box::new(Node::empty(None));
-    self.head = Some(Box::leak(new).into());
-    unsafe {
-      let inner = self.head.unwrap();
-      &mut *inner.as_ptr()
-    }
+    assert!(self.head.replace(Box::leak(new).into()).is_none());
+    unsafe { &mut *self.head.unwrap().as_ptr() }
   }
-  fn head_mut(&mut self) -> Option<&mut Node<T>> {
-    if let Some(n) = self.head {
-      Some(unsafe { &mut *n.as_ptr() })
-    } else {
-      None
-    }
-  }
+  fn head_mut(&mut self) -> Option<&mut Node<T>> { Some(unsafe { &mut *self.head?.as_ptr() }) }
+  fn head(&self) -> Option<&Node<T>> { Some(unsafe { &*self.head?.as_ptr() }) }
   pub fn push_back(&mut self, t: T) {
     self.len += 1;
     get_or_alloc_head!(self).push_back(t);
@@ -236,21 +233,21 @@ impl<T> LinkedList<T> {
     get_or_alloc_head!(self).insert(idx, t);
   }
   pub fn pop_front(&mut self) -> Option<T> {
-    if self.len == 0 {
+    if self.is_empty() {
       return None;
     }
     self.len -= 1;
     Some(self.head_mut().unwrap().pop_front())
   }
   pub fn pop_back(&mut self) -> Option<T> {
-    if self.len == 0 {
+    if self.is_empty() {
       return None;
     }
     self.len -= 1;
     Some(self.head_mut().unwrap().pop_back())
   }
   pub fn remove(&mut self, idx: usize) -> Option<T> {
-    if self.len == 0 || idx > self.len {
+    if self.is_empty() || idx > self.len {
       return None;
     }
     self.len -= 1;
@@ -263,6 +260,13 @@ impl<T> LinkedList<T> {
       .head
       .iter()
       .flat_map(|h| Iter::new(unsafe { h.as_ref() }))
+  }
+  pub fn peek_front(&self) -> Option<&T> {
+    if self.is_empty() {
+      return None;
+    }
+    let head = self.head().unwrap();
+    Some(unsafe { &*head.items[0].as_ptr() })
   }
 }
 
@@ -327,9 +331,4 @@ fn basic() {
     assert_eq!(ll.pop_back(), Some('b'));
   }
   assert!(ll.is_empty());
-  for i in ll.iter() {
-    print!("{:?}", i);
-  }
-
-  panic!("{:?}", get_or_alloc_head!(ll).node_count());
 }

@@ -208,6 +208,7 @@ macro_rules! get_or_alloc_head {
 }
 
 impl<T> LinkedList<T> {
+  /// Returns a new linked list. Does not allocate until items are added
   pub const fn new() -> Self { Self { head: None, len: 0 } }
   pub const fn len(&self) -> usize { self.len }
   pub const fn is_empty(&self) -> bool { self.len == 0 }

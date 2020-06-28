@@ -301,7 +301,8 @@ impl<'a, T> Iterator for Iter<'a, T> {
         self.n = 0;
         continue;
       };
-      // trapped like Colonel Abrams
+      // Like a fool, I'm trapped inside a cage
+      // trapped Colonel Abrams
       break Some(out);
     }
   }
